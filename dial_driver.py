@@ -471,8 +471,10 @@ class DialSerialDriver(SerialHardware):
     def get_dial_rx_buffer_size(self, device):
         logger.debug(f"@get_dial_rx_buffer_size(device={device})")
         rxLen = self._sendCommand(self.commands.COMM_CMD_RX_BUFFER_SIZE, self.data_type.COMM_DATA_SINGLE_VALUE, 1, int(device))
-        rxLen = int(rxLen[:8], 16)
-        return rxLen
+        if not isinstance(rxLen, str):
+            logger.error(f"get_dial_rx_buffer_size: unexpected response {rxLen!r} for device {device}")
+            return None
+        return int(rxLen[:8], 16)
 
     def dial_display_show(self, device):
         logger.debug(f"@dial_display_show(device={device})")
