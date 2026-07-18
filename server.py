@@ -262,9 +262,6 @@ class Dial_Get_List(BaseHandler):
 
         # Validate API key
         if not self.is_valid_api_key():
-            return self.send_response(status='fail', message='Missing API key!', status_code=403)
-
-        if not self.is_valid_api_key():
             return self.send_response(status='fail', message='Unauthorized', status_code=401)
 
         dials = self.handler.get_dial_info()
