@@ -155,7 +155,7 @@ class SerialHardware(object):
                 if line.startswith('<'):
                     break
             if time.time() > timeout_timestmap:
-                logger.error(f"Timeout occured ({time.time()} > {timeout_timestmap})")
+                logger.error(f"Timeout occured ({time.time()} > {timeout_timestmap}); lines received before timeout: {rx_lines!r}")
                 break
 
         return rx_lines
@@ -231,11 +231,16 @@ class SerialHardware(object):
             while self.port.in_waiting:
                 lines.append(self.handle_serial_read())
 
+            if lines:
+                logger.warning(f"serial_transaction: discarding {len(lines)} stale buffered line(s) before sending {payload!r}: {lines!r}")
+
             if not self.handle_serial_send(payload):
                 raise _serial.SerialException("Failed to send {}".format(payload))
 
             if not ignore_response:
                 rx_lines = self.read_until_response()
+                if not any(line.startswith('<') for line in rx_lines):
+                    logger.warning(f"serial_transaction: no valid response for {payload!r}; received {rx_lines!r}")
                 lines = rx_lines + lines
 
             return lines
