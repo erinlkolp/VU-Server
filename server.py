@@ -100,6 +100,11 @@ class BaseHandler(RequestHandler):
 class Device_Status_Handler(BaseHandler):
     def get(self, dial_uid):
         logger.debug(f"Request:STATUS - Device:{dial_uid}")
+
+        # Validate API key
+        if not self.is_valid_api_key():
+            return self.send_response(status='fail', message='Unauthorized', status_code=401)
+
         dial = self.handler.get_dial_info(dial_uid=dial_uid)
         if dial is not None:
             return self.send_response(status='ok', data=dial)
@@ -215,6 +220,11 @@ class Dial_Get_Image(BaseHandler):
         self.set_header("Content-Type", "image/png")
 
         logger.debug("Request: GET_IMAGE")
+
+        # Validate API key
+        if not self.is_valid_api_key():
+            return self.send_response(status='fail', message='Unauthorized', status_code=401)
+
         dial_image = os.path.join(os.path.dirname(__file__), 'upload', f'img_{gaugeUID}')
 
         if os.path.exists(dial_image):
@@ -237,6 +247,10 @@ class Dial_Get_Image_CRC(BaseHandler):
     def get(self, gaugeUID):
         logger.debug("Request: GET_IMAGE_CRC")
 
+        # Validate API key
+        if not self.is_valid_api_key():
+            return self.send_response(status='fail', message='Unauthorized', status_code=401)
+
         img_file = os.path.join(os.path.dirname(__file__), 'upload', f'img_{gaugeUID}')
 
         crc = self.get_file_crc(img_file)
@@ -247,9 +261,6 @@ class Dial_Get_List(BaseHandler):
         logger.debug("Request: DEVICE_LIST")
 
         # Validate API key
-        if not self.is_valid_api_key():
-            return self.send_response(status='fail', message='Missing API key!', status_code=403)
-
         if not self.is_valid_api_key():
             return self.send_response(status='fail', message='Unauthorized', status_code=401)
 
@@ -383,7 +394,11 @@ class Dial_Set_Easing_Backlight(BaseHandler):
             return self.send_response(status='fail', message="Please provide at least one of required parameters (`step` or `period`)", status_code=400)
 
         if self.handler.dial_set_easing_backlight(dial_uid=gaugeUID, step=step, period=period):
-            values_dict = { 'easing_backlight_step': step, 'easing_backlight_period': period }
+            values_dict = {}
+            if step is not None:
+                values_dict['easing_backlight_step'] = int(step)
+            if period is not None:
+                values_dict['easing_backlight_period'] = int(period)
             self.config.update_dial_db_cell_with_dict(gaugeUID, values_dict)
             self.handler.dial_reload_info_from_database(gaugeUID)
             return self.send_response(status='ok')
@@ -594,7 +609,6 @@ class Dial_API_Service(Application):
         IOLoop.current().add_callback_from_signal(self.shutdown_server)
         print('\r\nYou pressed Ctrl+C!')
         show_info_msg("CTRL+C", "CTRL+C pressed.\r\nVU Server app will exit now.")  # Remove if becomes annoying
-        sys.exit(0)
 
     def shut_down_dials(self):
         print("Shutting down dials...")

@@ -303,6 +303,10 @@ class DialSerialDriver(SerialHardware):
         ret = self._sendCommand(self.commands.COMM_CMD_GET_EASING_CONFIG, self.data_type.COMM_DATA_SINGLE_VALUE, 1, dialID)
         ret = self._convert_hex_str_to_byte_array(ret)
 
+        if len(ret) < 16:
+            logger.error(f"dial_easing_get_config: expected 16 bytes, got {len(ret)} for dial {dialID}")
+            return easing
+
         easing['dial_step']         = int(ret[0]) << 24 | int(ret[1]) << 16 | int(ret[2]) << 8 | int(ret[3])
         easing['dial_period']       = int(ret[4]) << 24 | int(ret[5]) << 16 | int(ret[6]) << 8 | int(ret[7])
         easing['backlight_step']    = int(ret[8]) << 24 | int(ret[9]) << 16 | int(ret[10]) << 8 | int(ret[11])
@@ -406,7 +410,7 @@ class DialSerialDriver(SerialHardware):
         return buff
 
     def binary_to_image_data(self, image):
-        img = Image.open(Image.open(BytesIO(image)))
+        img = Image.open(BytesIO(image))
         img = img.convert("L")
 
         imgData = np.asarray(img)
@@ -471,8 +475,10 @@ class DialSerialDriver(SerialHardware):
     def get_dial_rx_buffer_size(self, device):
         logger.debug(f"@get_dial_rx_buffer_size(device={device})")
         rxLen = self._sendCommand(self.commands.COMM_CMD_RX_BUFFER_SIZE, self.data_type.COMM_DATA_SINGLE_VALUE, 1, int(device))
-        rxLen = int(rxLen[:8], 16)
-        return rxLen
+        if not isinstance(rxLen, str):
+            logger.error(f"get_dial_rx_buffer_size: unexpected response {rxLen!r} for device {device}")
+            return None
+        return int(rxLen[:8], 16)
 
     def dial_display_show(self, device):
         logger.debug(f"@dial_display_show(device={device})")

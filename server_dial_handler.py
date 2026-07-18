@@ -181,6 +181,7 @@ class ServerDialHandler:
             return False
 
         value = self._convert_to_int(value)
+        value = max(0, min(value, 100))
 
         # Check if already at value
         if self.dials[dial_uid]['value'] == value:
@@ -253,11 +254,10 @@ class ServerDialHandler:
         blue = self._convert_to_int(blue)
         white = self._convert_to_int(white)
 
-        red = min(red, 100)
-        green = min(green, 100)
-        blue = min(blue, 100)
-        blue = min(blue, 100)
-        white = min(white, 100)
+        red = max(0, min(red, 100))
+        green = max(0, min(green, 100))
+        blue = max(0, min(blue, 100))
+        white = max(0, min(white, 100))
 
         new_value = {'red':red, 'green':green, 'blue':blue, 'white':white }
 
