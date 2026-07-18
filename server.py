@@ -609,7 +609,6 @@ class Dial_API_Service(Application):
         IOLoop.current().add_callback_from_signal(self.shutdown_server)
         print('\r\nYou pressed Ctrl+C!')
         show_info_msg("CTRL+C", "CTRL+C pressed.\r\nVU Server app will exit now.")  # Remove if becomes annoying
-        sys.exit(0)
 
     def shut_down_dials(self):
         print("Shutting down dials...")
