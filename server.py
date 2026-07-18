@@ -518,7 +518,7 @@ class FileHandler(RequestHandler):
             self.write(resp)
             raise Finish()
         content_type, _ = guess_type(file_location)
-        self.add_header('Content-Type', content_type)
+        self.set_header('Content-Type', content_type)
         with open(file_location, encoding="utf-8") as source_file:
             self.write(source_file.read())
 
