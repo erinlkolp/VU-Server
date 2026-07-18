@@ -626,16 +626,11 @@ class Dial_API_Service(Application):
         logger.info('Stopping API server')
         logger.info('Will shutdown in 3 seconds ...')
         io_loop = IOLoop.instance()
-        deadline = time.time() + 3
 
         def stop_loop():
-            now = time.time()
-            if now < deadline and (io_loop._callbacks or io_loop._timeouts):
-                io_loop.add_timeout(now + 1, stop_loop)
-            else:
-                io_loop.stop()
-                logger.info('Shutdown')
-        stop_loop()
+            io_loop.stop()
+            logger.info('Shutdown')
+        io_loop.call_later(3, stop_loop)
 
     def run_forever(self):
         logger.info("Karanovic Research Dials - Starting API server")
