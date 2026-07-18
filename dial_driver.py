@@ -28,7 +28,7 @@ class DialSerialDriver(SerialHardware):
         max_size = math.floor( (self.hub_config.GAUGE_COMM_MAX_RX_DATA_LEN - (self.hub_config.GAUGE_COMM_HEADER_LEN*2) )/2)
         return max_size
 
-    def _sendCommand(self, cmd, dataType, dataLen=0, data=None):
+    def _sendCommand(self, cmd, dataType, dataLen=0, data=None, ignore_response=False):
         if dataLen == 0:
             payload = ">{:02X}{:02X}{:04X}".format(cmd, dataType, dataLen)
         elif dataLen == 1:
@@ -50,7 +50,9 @@ class DialSerialDriver(SerialHardware):
 
         logger.debug(f"CMD:{cmd} - Type:{dataType} - Len:{dataLen}".format(payload))
         logger.debug("Sending `{}`".format(payload))
-        response = self.serial_transaction(payload)
+        response = self.serial_transaction(payload, ignore_response=ignore_response)
+        if ignore_response:
+            return True
         return self._parseResponse(response)
 
     def _send_cmd_with_uin32(self, dialID, cmd, value, dt=None):
@@ -60,7 +62,7 @@ class DialSerialDriver(SerialHardware):
         return self._sendCommand(cmd, dt, len(data), data)
 
     def _parseResponse(self, response):
-        for line in response:
+        for idx, line in enumerate(response):
             logger.debug(line)
             if line.startswith('<'):
                 cmd = line[1:3]
@@ -69,6 +71,7 @@ class DialSerialDriver(SerialHardware):
                 data = line[9:]
                 ret = {'cmd':cmd, 'dataType':dataType, 'dataLen':dataLen, 'data':data}
 
+                logger.debug(f"_parseResponse: matched line {idx+1}/{len(response)}: {line!r}")
                 if dataType == self.data_type.COMM_DATA_STATUS_CODE:
                     return self._checkStatus(ret['data'])
                 return ret['data']
@@ -326,7 +329,7 @@ class DialSerialDriver(SerialHardware):
         if self.dials.get(int(dialID), False):
             self.dials[int(dialID)]['value'] = value
         data = [dialID, (value&0xFF)]
-        return self._sendCommand(self.commands.COMM_CMD_SET_DIAL_PERC_SINGLE, self.data_type.COMM_DATA_KEY_VALUE_PAIR, len(data), data)
+        return self._sendCommand(self.commands.COMM_CMD_SET_DIAL_PERC_SINGLE, self.data_type.COMM_DATA_KEY_VALUE_PAIR, len(data), data, ignore_response=True)
 
     def dial_multiple_set_percent(self, devices, values):
         logger.debug(f"@dial_multiple_set_percent(devices={devices}, values={values})")
