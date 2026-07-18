@@ -605,10 +605,13 @@ class Dial_API_Service(Application):
 
     def signal_handler(self, signal, frame):
         pid_lock('server', False)
-        self.shut_down_dials()
-        IOLoop.current().add_callback_from_signal(self.shutdown_server)
         print('\r\nYou pressed Ctrl+C!')
         show_info_msg("CTRL+C", "CTRL+C pressed.\r\nVU Server app will exit now.")  # Remove if becomes annoying
+
+        def do_shutdown():
+            self.shut_down_dials()
+            self.shutdown_server()
+        IOLoop.current().add_callback_from_signal(do_shutdown)
 
     def shut_down_dials(self):
         print("Shutting down dials...")
