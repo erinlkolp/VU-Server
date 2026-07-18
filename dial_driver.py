@@ -303,6 +303,10 @@ class DialSerialDriver(SerialHardware):
         ret = self._sendCommand(self.commands.COMM_CMD_GET_EASING_CONFIG, self.data_type.COMM_DATA_SINGLE_VALUE, 1, dialID)
         ret = self._convert_hex_str_to_byte_array(ret)
 
+        if len(ret) < 16:
+            logger.error(f"dial_easing_get_config: expected 16 bytes, got {len(ret)} for dial {dialID}")
+            return easing
+
         easing['dial_step']         = int(ret[0]) << 24 | int(ret[1]) << 16 | int(ret[2]) << 8 | int(ret[3])
         easing['dial_period']       = int(ret[4]) << 24 | int(ret[5]) << 16 | int(ret[6]) << 8 | int(ret[7])
         easing['backlight_step']    = int(ret[8]) << 24 | int(ret[9]) << 16 | int(ret[10]) << 8 | int(ret[11])
