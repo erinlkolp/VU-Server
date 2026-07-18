@@ -406,7 +406,7 @@ class DialSerialDriver(SerialHardware):
         return buff
 
     def binary_to_image_data(self, image):
-        img = Image.open(Image.open(BytesIO(image)))
+        img = Image.open(BytesIO(image))
         img = img.convert("L")
 
         imgData = np.asarray(img)
