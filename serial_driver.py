@@ -236,8 +236,7 @@ class SerialHardware(object):
 
             if not ignore_response:
                 rx_lines = self.read_until_response()
-
-            lines = rx_lines + lines
+                lines = rx_lines + lines
 
             return lines
         finally:
