@@ -232,7 +232,7 @@ class SerialHardware(object):
                 lines.append(self.handle_serial_read())
 
             if lines:
-                logger.warning(f"serial_transaction: discarding {len(lines)} stale buffered line(s) before sending {payload!r}: {lines!r}")
+                logger.debug(f"serial_transaction: discarding {len(lines)} stale buffered line(s) before sending {payload!r}: {lines!r}")
 
             if not self.handle_serial_send(payload):
                 raise _serial.SerialException("Failed to send {}".format(payload))
