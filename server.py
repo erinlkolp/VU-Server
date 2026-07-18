@@ -100,6 +100,11 @@ class BaseHandler(RequestHandler):
 class Device_Status_Handler(BaseHandler):
     def get(self, dial_uid):
         logger.debug(f"Request:STATUS - Device:{dial_uid}")
+
+        # Validate API key
+        if not self.is_valid_api_key():
+            return self.send_response(status='fail', message='Unauthorized', status_code=401)
+
         dial = self.handler.get_dial_info(dial_uid=dial_uid)
         if dial is not None:
             return self.send_response(status='ok', data=dial)
@@ -215,6 +220,11 @@ class Dial_Get_Image(BaseHandler):
         self.set_header("Content-Type", "image/png")
 
         logger.debug("Request: GET_IMAGE")
+
+        # Validate API key
+        if not self.is_valid_api_key():
+            return self.send_response(status='fail', message='Unauthorized', status_code=401)
+
         dial_image = os.path.join(os.path.dirname(__file__), 'upload', f'img_{gaugeUID}')
 
         if os.path.exists(dial_image):
@@ -236,6 +246,10 @@ class Dial_Get_Image(BaseHandler):
 class Dial_Get_Image_CRC(BaseHandler):
     def get(self, gaugeUID):
         logger.debug("Request: GET_IMAGE_CRC")
+
+        # Validate API key
+        if not self.is_valid_api_key():
+            return self.send_response(status='fail', message='Unauthorized', status_code=401)
 
         img_file = os.path.join(os.path.dirname(__file__), 'upload', f'img_{gaugeUID}')
 
