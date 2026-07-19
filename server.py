@@ -274,7 +274,7 @@ class Dial_Get_List(BaseHandler):
                             'uid' : uid,
                             'dial_name': dials[uid]['dial_name'],
                             'value': dials[uid]['value'],
-                            'backlight': dials[uid]['backlight'],
+                            'backlight': dict(dials[uid]['backlight']),
                             'image_file' : dials[uid]['image_file']
                         }
             # Remove unused keys
