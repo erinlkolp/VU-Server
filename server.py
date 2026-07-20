@@ -378,12 +378,18 @@ class Dial_Set_Easing_Dial(BaseHandler):
         if step is None and period is None:
             return self.send_response(status='fail', message="Please provide at least one of required parameters (`step` or `period`)", status_code=400)
 
+        try:
+            step = None if step is None else int(step)
+            period = None if period is None else int(period)
+        except (TypeError, ValueError):
+            return self.send_response(status='fail', message="`step` and `period` must be integers.", status_code=400)
+
         if self.handler.dial_set_easing_dial(dial_uid=gaugeUID, step=step, period=period):
             values_dict = {}
             if step is not None:
-                values_dict['easing_dial_step'] = int(step)
+                values_dict['easing_dial_step'] = step
             if period is not None:
-                values_dict['easing_dial_period'] = int(period)
+                values_dict['easing_dial_period'] = period
             self.config.update_dial_db_cell_with_dict(gaugeUID, values_dict)
             self.handler.dial_reload_info_from_database(gaugeUID)
             return self.send_response(status='ok')
@@ -402,12 +408,18 @@ class Dial_Set_Easing_Backlight(BaseHandler):
         if step is None and period is None:
             return self.send_response(status='fail', message="Please provide at least one of required parameters (`step` or `period`)", status_code=400)
 
+        try:
+            step = None if step is None else int(step)
+            period = None if period is None else int(period)
+        except (TypeError, ValueError):
+            return self.send_response(status='fail', message="`step` and `period` must be integers.", status_code=400)
+
         if self.handler.dial_set_easing_backlight(dial_uid=gaugeUID, step=step, period=period):
             values_dict = {}
             if step is not None:
-                values_dict['easing_backlight_step'] = int(step)
+                values_dict['easing_backlight_step'] = step
             if period is not None:
-                values_dict['easing_backlight_period'] = int(period)
+                values_dict['easing_backlight_period'] = period
             self.config.update_dial_db_cell_with_dict(gaugeUID, values_dict)
             self.handler.dial_reload_info_from_database(gaugeUID)
             return self.send_response(status='ok')
@@ -488,17 +500,22 @@ class Admin_Keys_Update(BaseHandler):
         if dial_list is None and key is None:
             return self.send_response(status='fail', message='Key, Key name and Dial list are all empty. Aborting.', status_code=400)
 
-        # Update key
+        updated = False
+
+        # Update key name
         if name is not None:
             if not self.config.update_api_key(key_uid=key, key_name=name):
                 return self.send_response(status='fail', message='Failed to update key!')
+            updated = True
 
         # Update dial access
         if dial_list:
             dial_list = dial_list.split(';')
             if self.config.api_key_add_dial_access(key, dial_list):
-                return self.send_response(status='ok', message='Key updated!')
+                updated = True
 
+        if updated:
+            return self.send_response(status='ok', message='Key updated!')
         return self.send_response(status='fail', message='Failed to update key!')
 
 class Admin_Keys_Remove(BaseHandler):
@@ -575,9 +592,11 @@ class Dial_API_Service(Application):
         self.dial_driver = DialSerialDriver(self.serialPort)
         self.dial_handler = ServerDialHandler(self.dial_driver, self.config)
 
-        # If we don't see any dials, try looking/provisioning some
-        if len(self.dial_handler.dials) <= 1:
-            logger.info("No additional dials found. Searching the bus for new ones...")
+        # If we don't see any dials, try looking/provisioning some. Only do this
+        # when the bus is genuinely empty -- the old `<= 1` check re-ran the
+        # provisioning scan on every startup whenever a single dial was present.
+        if len(self.dial_handler.dials) == 0:
+            logger.info("No dials found. Searching the bus for new ones...")
             self.dial_handler.provision_dials(num_attempts=3)
 
         handlers_config = { "handler":self.dial_handler, "config":self.config }

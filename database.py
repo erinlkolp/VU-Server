@@ -164,11 +164,14 @@ class DialsDB:
         self._query(query, (key_id,))
         self._commit()
         if self._more_than_one_changed():
-            # Delete dial access
+            # Delete dial access. This may affect zero rows (a key without any
+            # granted dials), so its change count must NOT decide the return
+            # value -- the key itself was already deleted successfully.
             self._query("DELETE FROM `dial_access` WHERE `key_id`=?", (key_id,))
             self._commit()
+            self._more_than_one_changed()  # keep the change counter in sync
 
-            return self._more_than_one_changed()
+            return True
 
         return False
 

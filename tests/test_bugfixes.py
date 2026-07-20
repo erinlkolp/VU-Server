@@ -12,9 +12,11 @@ import types
 
 import pytest
 
+import server_dial_handler
 from server import BaseHandler
 from dial_driver import DialSerialDriver
 from database import DialsDB
+from server_dial_handler import ServerDialHandler
 
 
 # -- #1: force flag argument parsing -----------------------------------------
@@ -98,3 +100,49 @@ def test_api_update_master_is_committed(tmp_path):
 
     assert row is not None
     assert row['key_uid'] == 'MASTERKEY123'
+
+
+# -- #6: provision_dials returns the refreshed dial list ----------------------
+
+def test_provision_dials_returns_dial_info(monkeypatch):
+    # The /dial/provision endpoint sends back whatever provision_dials()
+    # returns. Previously the method returned None, so the endpoint always
+    # responded with `data: null`.
+    handler = object.__new__(ServerDialHandler)
+    handler.dials = {'AAA': {'uid': 'AAA', 'value': 0}}
+    handler.dial_driver = types.SimpleNamespace(provision_dials=lambda: True)
+
+    # Keep the test fast and hardware-free.
+    monkeypatch.setattr(server_dial_handler, 'sleep', lambda _seconds: None)
+    monkeypatch.setattr(handler, '_reload_dials', lambda rescan=False: None)
+
+    result = handler.provision_dials(num_attempts=1)
+
+    assert result == {'AAA': {'uid': 'AAA', 'value': 0}}
+
+
+# -- #7: get_dial_list drops dials that went offline on rescan ----------------
+
+def test_get_dial_list_rescan_drops_offline_dials():
+    driver = _bare_driver()
+    # Two dials cached from a previous scan.
+    driver.dials = {
+        0: {'index': '0', 'uid': 'AAA', 'value': 50},
+        1: {'index': '1', 'uid': 'BBB', 'value': 75},
+    }
+    driver.commands = types.SimpleNamespace(
+        COMM_CMD_RESCAN_BUS=0,
+        COMM_CMD_GET_DEVICES_MAP=1,
+    )
+    driver.data_type = types.SimpleNamespace(COMM_DATA_NONE=0)
+
+    # Only index 0 reports online now ("01" = single byte, value 1).
+    driver.bus_rescan = lambda: True
+    driver._sendCommand = lambda *a, **k: "01"
+    driver.dial_get_uid = lambda index: 'AAA'
+
+    result = driver.get_dial_list(rescan=True)
+
+    uids = {dial['uid'] for dial in result}
+    assert uids == {'AAA'}          # BBB dropped off the bus
+    assert 1 not in driver.dials    # and is gone from the cache

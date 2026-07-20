@@ -65,3 +65,14 @@ class EasingDialTestCase(tornado.testing.AsyncHTTPTestCase):
         assert self.fake_config.updates == [
             ('ABC123', {'easing_dial_step': 5, 'easing_dial_period': 250})
         ]
+
+    def test_non_numeric_step_returns_400_not_500(self):
+        # Previously the handler ran `int(step)` on the raw query string when
+        # building the DB update, throwing ValueError -> unhandled 500.
+        response = self.fetch("/api/v0/dial/ABC123/easing/dial?key=testkey&step=abc")
+        body = json.loads(response.body)
+
+        assert response.code == 400
+        assert body['status'] == 'fail'
+        # Nothing should have been persisted for a rejected request.
+        assert self.fake_config.updates == []

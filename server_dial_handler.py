@@ -78,6 +78,9 @@ class ServerDialHandler:
 
         # Dial HUB uses indexes to address each dial. On the server side we use UID for flexibility
         # and also so that we can uniquely identify each dial.
+        # Rebuild from the current bus scan so dials that were unplugged no
+        # longer show up in the API's dial list.
+        refreshed = {}
         for dial in dials:
             dial['value'] = 0
             dial['backlight'] = {'red':0, 'green':0, 'blue':0, 'white':0 }
@@ -86,7 +89,8 @@ class ServerDialHandler:
             dial['value_changed'] = False
             dial['backlight_changed'] = True
             dial['image_changed'] = False
-            self.dials[dial['uid']] = dial
+            refreshed[dial['uid']] = dial
+        self.dials = refreshed
 
     def _send_db_config_to_dials(self):
         for _, dial in self.dials.items():
@@ -169,6 +173,7 @@ class ServerDialHandler:
             sleep(0.2)
         logger.debug("Retrieving list of dials")
         self._reload_dials(True)
+        return self.get_dial_info()
 
     def get_dial_info(self, dial_uid=None):
         if dial_uid is not None:

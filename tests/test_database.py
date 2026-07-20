@@ -57,3 +57,23 @@ def test_api_key_update_does_not_allow_sql_injection_via_key_name(db):
 
 def test_api_key_delete_returns_false_for_nonexistent_key(db):
     assert db.api_key_delete('does-not-exist') is False
+
+
+def test_api_key_delete_without_dial_access_reports_success(db):
+    # A freshly generated key has no rows in `dial_access`. Deleting it must
+    # still report success -- the old code returned the result of a *second*
+    # `_more_than_one_changed()` check that only saw the (empty) dial_access
+    # delete, so it wrongly returned False even though the key was removed.
+    key = db.api_key_generate(key_name='Temp key', level=1)
+    assert db.api_key_get_id(key) is not None
+
+    assert db.api_key_delete(key) is True
+    assert db.api_key_get_id(key) is None
+
+
+def test_api_key_delete_with_dial_access_reports_success(db):
+    key = db.api_key_generate(key_name='Temp key', level=1)
+    db.api_key_add_dial_access(key, ['AAAAAAAAAAAA'])
+
+    assert db.api_key_delete(key) is True
+    assert db.api_key_get_id(key) is None
