@@ -310,6 +310,19 @@ class Dial_Provision(BaseHandler):
 
         return self.send_response(status='ok', data=dials)
 
+class Dial_Reset_All(BaseHandler):
+    def get(self):
+
+        logger.debug("Request: RESET_ALL_DEVICES")
+
+        # Validate master key -- this is a bus-wide, disruptive action.
+        if not self.valid_admin_key():
+            return False
+
+        if self.handler.reset_all_devices():
+            return self.send_response(status='ok', message='All devices reset.', status_code=200)
+        return self.send_response(status='fail', message='Failed to reset devices.', status_code=503)
+
 class Dial_Set_Dial_Name(BaseHandler):
     def get(self, gaugeUID):
         new_name = self.get_argument('name', None)
@@ -602,6 +615,7 @@ class Dial_API_Service(Application):
         handlers_config = { "handler":self.dial_handler, "config":self.config }
         self.handlers = [
             (r"/api/v0/dial/provision", Dial_Provision, handlers_config),
+            (r"/api/v0/dial/reset_all", Dial_Reset_All, handlers_config),
             (r"/api/v0/dial/list", Dial_Get_List, handlers_config),
             (r"/api/v0/dial/([0-9A-F]*?)/status", Device_Status_Handler, handlers_config),
             (r"/api/v0/dial/([0-9A-F]*?)/set", Device_Set_Handler, handlers_config),
