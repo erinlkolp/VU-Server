@@ -148,6 +148,44 @@ def test_get_dial_list_rescan_drops_offline_dials():
     assert 1 not in driver.dials    # and is gone from the cache
 
 
+# -- #8: a failed backlight write must not be marked as delivered -------------
+
+def _periodic_handler(backlight_send_result):
+    """A bare ServerDialHandler wired to a stub driver for the periodic loop."""
+    handler = object.__new__(ServerDialHandler)
+    handler.communication_timeout = 5
+    handler.dials = {
+        'AAA': {
+            'uid': 'AAA',
+            'index': '0',
+            'backlight': {'red': 100, 'green': 0, 'blue': 0, 'white': 0},
+            'backlight_changed': True,
+            'update_deadline': 0,
+        }
+    }
+    handler.dial_driver = types.SimpleNamespace(
+        dial_set_backlight=lambda *a, **k: backlight_send_result
+    )
+    return handler
+
+
+def test_backlight_flag_stays_set_when_send_fails():
+    # The driver reports the write failed (e.g. dial offline/busy). The change
+    # must remain pending so the next poll retries it, otherwise the cached
+    # RGBW state silently diverges from the hardware.
+    handler = _periodic_handler(backlight_send_result=False)
+    updated = handler._periodic_update_dial_backlight()
+    assert updated == 0
+    assert handler.dials['AAA']['backlight_changed'] is True
+
+
+def test_backlight_flag_clears_when_send_succeeds():
+    handler = _periodic_handler(backlight_send_result=True)
+    updated = handler._periodic_update_dial_backlight()
+    assert updated == 1
+    assert handler.dials['AAA']['backlight_changed'] is False
+
+
 # -- Cleanup: per-instance dial/key state must not be shared class attributes -
 
 @pytest.mark.parametrize("cls,attrs", [
