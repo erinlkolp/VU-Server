@@ -204,6 +204,10 @@ class DialSerialDriver(SerialHardware):
 
         if sendCMD:
             self.dial_single_set_percent(dialID, int(value))
+        elif value is not None and self.dials.get(int(dialID)) is not None:
+            # Keep the cached value in sync even when we don't send a command
+            # (e.g. batched via dial_multiple_set_percent).
+            self.dials[int(dialID)]['value'] = int(value)
         return True
 
     def _findDial(self, UID):
@@ -216,10 +220,11 @@ class DialSerialDriver(SerialHardware):
         if isinstance(device, str):
             if len(device) <= 3:
                 return int(device)
-            device = self._findDial(device)
+            uid = device
+            device = self._findDial(uid)
 
             if device is None:
-                logger.error(f"Can not find dial '{device}'")
+                logger.error(f"Can not find dial '{uid}'")
             return device
 
         elif isinstance(device, int):
@@ -339,7 +344,7 @@ class DialSerialDriver(SerialHardware):
 
         data = []
         for i in range(len(devices)):
-            self.set_dial(devices[i], values[i], sendCMD=False)
+            self.set_dial(dialID=devices[i], value=values[i], sendCMD=False)
             data.append(devices[i])
             data.append(values[i])
 
@@ -490,6 +495,9 @@ class DialSerialDriver(SerialHardware):
     def dial_set_backlight(self, device, red, green, blue, white):
         logger.debug(f"@dial_set_backlight(device={device}, red={red}, green={green}, green={green}, blue={blue}, white={white})")
         device = self._verify_device(device)
+        if device is None or device not in self.dials:
+            logger.error(f"dial_set_backlight: unknown device {device!r}")
+            return False
         self.dials[device]['rgbw'][0] = red
         self.dials[device]['rgbw'][1] = green
         self.dials[device]['rgbw'][2] = blue

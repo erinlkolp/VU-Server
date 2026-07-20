@@ -118,7 +118,7 @@ class DialsDB:
 
     # Set master key to defined value (used to drive master key from .yaml file into sqlite database)
     def api_update_master(self, new_key):
-        self._query("INSERT OR REPLACE INTO api_keys (key_id, key_name, key_uid, key_level) VALUES ('1', 'MASTER_KEY', ?, 99)", (new_key,))
+        self._insert("INSERT OR REPLACE INTO api_keys (key_id, key_name, key_uid, key_level) VALUES ('1', 'MASTER_KEY', ?, 99)", (new_key,))
         return self._more_than_one_changed()
 
     def api_key_generate(self, key_name='Not set', level=1):
