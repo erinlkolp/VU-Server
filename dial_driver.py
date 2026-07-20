@@ -36,7 +36,7 @@ class DialSerialDriver(SerialHardware):
         elif dataLen == 1:
             if data < 256:
                 payload = ">{:02X}{:02X}{:04X}{:02X}".format(cmd, dataType, dataLen, data)
-            elif data >= 256:
+            else:
                 payload = ">{:02X}{:02X}{:04X}{:04X}".format(cmd, dataType, dataLen+1, data)
         elif dataLen > 1:
             formattedData = ""
@@ -49,6 +49,8 @@ class DialSerialDriver(SerialHardware):
                     raise ValueError('Unsupported data type ({})'.format(type(elem)))
 
             payload = ">{:02X}{:02X}{:04X}{}".format(cmd, dataType, int(len(formattedData)/2), formattedData)
+        else:
+            raise ValueError(f"Unexpected dataLen={dataLen!r}")
 
         logger.debug(f"CMD:{cmd} - Type:{dataType} - Len:{dataLen}".format(payload))
         logger.debug("Sending `{}`".format(payload))
