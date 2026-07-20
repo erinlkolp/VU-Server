@@ -146,3 +146,26 @@ def test_get_dial_list_rescan_drops_offline_dials():
     uids = {dial['uid'] for dial in result}
     assert uids == {'AAA'}          # BBB dropped off the bus
     assert 1 not in driver.dials    # and is gone from the cache
+
+
+# -- Cleanup: per-instance dial/key state must not be shared class attributes -
+
+@pytest.mark.parametrize("cls,attrs", [
+    (DialSerialDriver, ('dials', 'hub_info')),
+    (ServerDialHandler, ('dials', 'hub_info')),
+])
+def test_mutable_state_is_not_a_class_attribute(cls, attrs):
+    # These were declared as class-level `{}` dicts, so every instance shared
+    # (and mutated) the same object. They must live on the instance instead.
+    for attr in attrs:
+        assert attr not in vars(cls), (
+            f"{cls.__name__}.{attr} is a shared class attribute; "
+            "initialise it in __init__ instead."
+        )
+
+
+def test_serverconfig_mutable_state_is_not_a_class_attribute():
+    # Imported lazily so the test module doesn't require a config/database.
+    from server_config import ServerConfig
+    for attr in ('dials', 'api_keys'):
+        assert attr not in vars(ServerConfig)
