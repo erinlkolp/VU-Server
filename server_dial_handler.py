@@ -14,6 +14,15 @@ from dials.base_logger import logger
 class ServerDialHandler:
     communication_timeout = 3
 
+    # Backlight retry-backoff. A dial that stops ACKing backlight writes is
+    # retried with exponential backoff; after BACKLIGHT_MAX_FAILURES consecutive
+    # failures it is marked unresponsive and left alone until it re-appears on a
+    # bus rescan or a new colour is requested. This keeps one dead dial from
+    # spamming the log and blocking the serial bus on every periodic tick.
+    BACKLIGHT_MAX_FAILURES = 5
+    BACKLIGHT_BACKOFF_BASE = 1.0   # seconds
+    BACKLIGHT_BACKOFF_MAX = 30.0   # seconds
+
     def __init__(self, dial_driver, server_config):
         self.dial_driver = dial_driver
         self.server_config = server_config
@@ -91,6 +100,9 @@ class ServerDialHandler:
             dial['update_deadline'] = time()
             dial['value_changed'] = False
             dial['backlight_changed'] = True
+            dial['backlight_fail_count'] = 0
+            dial['backlight_retry_after'] = 0
+            dial['backlight_unresponsive'] = False
             dial['image_changed'] = False
             refreshed[dial['uid']] = dial
         self.dials = refreshed
@@ -131,25 +143,53 @@ class ServerDialHandler:
 
     def _periodic_update_dial_backlight(self):
         updated = 0
+        now = time()
         for _, dial in self.dials.items():
-            if dial['backlight_changed']:
-                sent = self.dial_driver.dial_set_backlight(dial['index'],
-                                                    dial['backlight']['red'],
-                                                    dial['backlight']['green'],
-                                                    dial['backlight']['blue'],
-                                                    dial['backlight']['white']
-                                                    )
-                # Only mark the update as delivered if the driver confirmed the
-                # write. Clearing the flag on a failed send would leave the
-                # cached RGBW state out of sync with the hardware, and the
-                # "already at value" short-circuit in dial_set_backlight() would
-                # then block re-sending the same colour indefinitely.
-                if not sent:
-                    logger.error(f"Failed to update backlight for dial {dial['uid']}; will retry.")
-                    continue
-                dial['backlight_changed'] = False
-                dial['update_deadline'] = time() + self.communication_timeout
-                updated = updated+1
+            if not dial['backlight_changed']:
+                continue
+
+            # A dial that has exhausted its retries is left alone until it comes
+            # back on a rescan or a new colour is queued (see dial_set_backlight).
+            if dial.get('backlight_unresponsive', False):
+                continue
+
+            # Still within the backoff window from a previous failure.
+            if now < dial.get('backlight_retry_after', 0):
+                continue
+
+            sent = self.dial_driver.dial_set_backlight(dial['index'],
+                                                dial['backlight']['red'],
+                                                dial['backlight']['green'],
+                                                dial['backlight']['blue'],
+                                                dial['backlight']['white']
+                                                )
+            # Only mark the update as delivered if the driver confirmed the
+            # write. Clearing the flag on a failed send would leave the cached
+            # RGBW state out of sync with the hardware, and the "already at
+            # value" short-circuit in dial_set_backlight() would then block
+            # re-sending the same colour indefinitely.
+            if not sent:
+                fail_count = dial.get('backlight_fail_count', 0) + 1
+                dial['backlight_fail_count'] = fail_count
+                if fail_count >= self.BACKLIGHT_MAX_FAILURES:
+                    dial['backlight_unresponsive'] = True
+                    logger.error(f"Dial {dial['uid']} unresponsive after {fail_count} "
+                                 f"backlight attempts; giving up until it re-appears "
+                                 f"or a new colour is requested.")
+                else:
+                    backoff = min(self.BACKLIGHT_BACKOFF_BASE * (2 ** (fail_count - 1)),
+                                  self.BACKLIGHT_BACKOFF_MAX)
+                    dial['backlight_retry_after'] = now + backoff
+                    logger.error(f"Failed to update backlight for dial {dial['uid']}; "
+                                 f"retrying in {backoff:g}s (attempt {fail_count}).")
+                continue
+
+            dial['backlight_changed'] = False
+            dial['backlight_fail_count'] = 0
+            dial['backlight_retry_after'] = 0
+            dial['backlight_unresponsive'] = False
+            dial['update_deadline'] = now + self.communication_timeout
+            updated = updated+1
         if updated>0:
             logger.debug(f"Updated {updated} dial backlight(s).")
         return updated
@@ -277,14 +317,26 @@ class ServerDialHandler:
 
         new_value = {'red':red, 'green':green, 'blue':blue, 'white':white }
 
-        # Check if already at value
-        if self.dials[dial_uid]['backlight'] == new_value:
+        dial = self.dials[dial_uid]
+
+        # Only short-circuit when the value has actually been delivered. If a
+        # change is still pending or the dial was marked unresponsive, the
+        # hardware is not at this colour yet, so re-requesting it must re-arm the
+        # write instead of being silently dropped.
+        if (dial['backlight'] == new_value
+                and not dial['backlight_changed']
+                and not dial.get('backlight_unresponsive', False)):
             logger.debug(f"Dial {dial_uid} already at {red}:{green}:{blue}:{white}")
             return True
 
         logger.debug(f"Queueing dial {dial_uid} RGBW update to {red}:{green}:{blue}:{white}")
-        self.dials[dial_uid]['backlight'] = {'red':red, 'green':green, 'blue':blue, 'white':white }
-        self.dials[dial_uid]['backlight_changed'] = True
+        dial['backlight'] = {'red':red, 'green':green, 'blue':blue, 'white':white }
+        dial['backlight_changed'] = True
+        # A fresh request clears any prior backoff / unresponsive state so the
+        # dial gets a clean attempt.
+        dial['backlight_fail_count'] = 0
+        dial['backlight_retry_after'] = 0
+        dial['backlight_unresponsive'] = False
         return True
 
     def dial_set_image(self, dial_uid, image_file):

@@ -13,6 +13,12 @@ from serial_driver import SerialHardware
 
 
 class DialSerialDriver(SerialHardware):
+    # A backlight write is ACKed by an immediately-returned status code (it is
+    # not gated on the easing animation), so it only needs a short read window.
+    # Keeping this well below the default 5s stops a silent dial from blocking
+    # the caller for the full timeout on every retry.
+    BACKLIGHT_READ_TIMEOUT = 0.5
+
     def __init__(self, port_info):
         super(DialSerialDriver, self).__init__(port_info, timeout=2)
 
@@ -30,7 +36,7 @@ class DialSerialDriver(SerialHardware):
         max_size = math.floor( (self.hub_config.GAUGE_COMM_MAX_RX_DATA_LEN - (self.hub_config.GAUGE_COMM_HEADER_LEN*2) )/2)
         return max_size
 
-    def _sendCommand(self, cmd, dataType, dataLen=0, data=None, ignore_response=False):
+    def _sendCommand(self, cmd, dataType, dataLen=0, data=None, ignore_response=False, read_timeout=None):
         if dataLen == 0:
             payload = ">{:02X}{:02X}{:04X}".format(cmd, dataType, dataLen)
         elif dataLen == 1:
@@ -54,7 +60,7 @@ class DialSerialDriver(SerialHardware):
 
         logger.debug(f"CMD:{cmd} - Type:{dataType} - Len:{dataLen}".format(payload))
         logger.debug("Sending `{}`".format(payload))
-        response = self.serial_transaction(payload, ignore_response=ignore_response)
+        response = self.serial_transaction(payload, ignore_response=ignore_response, read_timeout=read_timeout)
         if ignore_response:
             return True
         return self._parseResponse(response)
@@ -511,7 +517,7 @@ class DialSerialDriver(SerialHardware):
         self.dials[device]['rgbw'][2] = blue
         self.dials[device]['rgbw'][3] = white
         data = [device, red, green, blue, white]
-        return self._sendCommand(self.commands.COMM_CMD_SET_RGB_BACKLIGHT, self.data_type.COMM_DATA_MULTIPLE_VALUE, len(data), data)
+        return self._sendCommand(self.commands.COMM_CMD_SET_RGB_BACKLIGHT, self.data_type.COMM_DATA_MULTIPLE_VALUE, len(data), data, read_timeout=self.BACKLIGHT_READ_TIMEOUT)
 
     def dial_send_keep_comm_alive(self, device):
         pass
