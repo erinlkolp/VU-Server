@@ -207,7 +207,7 @@ class SerialHardware(object):
 
         return None
 
-    def serial_transaction(self, payload, ignore_response=False):
+    def serial_transaction(self, payload, ignore_response=False, read_timeout=None):
         """
         Wrapper to send a str payload to the serial port and get a response.
         Acquires the lock and asserts that the port is open and then calls the handle_serial_send
@@ -217,6 +217,7 @@ class SerialHardware(object):
 
         @param payload the string serial payload passed to handle_serial_send
         @ignore_response don't read any response
+        @param read_timeout seconds to wait for the response; None uses read_until_response's default
         @return the result from the handle_serial_read sub payload
         """
         lines = []
@@ -238,7 +239,7 @@ class SerialHardware(object):
                 raise _serial.SerialException("Failed to send {}".format(payload))
 
             if not ignore_response:
-                rx_lines = self.read_until_response()
+                rx_lines = self.read_until_response() if read_timeout is None else self.read_until_response(timeout=read_timeout)
                 if not any(line.startswith('<') for line in rx_lines):
                     logger.warning(f"serial_transaction: no valid response for {payload!r}; received {rx_lines!r}")
                 lines = rx_lines + lines
