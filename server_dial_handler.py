@@ -12,13 +12,16 @@ from dials.base_logger import logger
 # 'periodic_dial_update' function is called periodically from the main server loop
 #
 class ServerDialHandler:
-    dials = {}
-    hub_info = {}
     communication_timeout = 3
 
     def __init__(self, dial_driver, server_config):
         self.dial_driver = dial_driver
         self.server_config = server_config
+
+        # Per-instance state (previously class attributes shared across every
+        # ServerDialHandler instance).
+        self.dials = {}
+        self.hub_info = {}
 
         # Communication timeout
         cfg = self.server_config.get_server_config()

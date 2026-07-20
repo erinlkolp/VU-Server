@@ -13,11 +13,13 @@ from serial_driver import SerialHardware
 
 
 class DialSerialDriver(SerialHardware):
-    dials = {}
-    hub_info = {}
-
     def __init__(self, port_info):
         super(DialSerialDriver, self).__init__(port_info, timeout=2)
+
+        # Per-instance state (previously class attributes shared across every
+        # DialSerialDriver instance).
+        self.dials = {}
+        self.hub_info = {}
 
         self.commands = hub_commands()
         self.hub_config = hub_config()
