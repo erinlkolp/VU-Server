@@ -323,6 +323,19 @@ class Dial_Reset_All(BaseHandler):
             return self.send_response(status='ok', message='All devices reset.', status_code=200)
         return self.send_response(status='fail', message='Failed to reset devices.', status_code=503)
 
+class Dial_Reset_Device(BaseHandler):
+    def get(self, gaugeUID):
+
+        logger.debug(f"Request: RESET_DEVICE - Device:{gaugeUID}")
+
+        # Validate API key
+        if not self.is_valid_api_key():
+            return self.send_response(status='fail', message='Unauthorized', status_code=401)
+
+        if self.handler.reset_device(gaugeUID):
+            return self.send_response(status='ok', message='Device reset.', status_code=200)
+        return self.send_response(status='fail', message='Invalid dial_uid or device is offline.', status_code=503)
+
 class Dial_Set_Dial_Name(BaseHandler):
     def get(self, gaugeUID):
         new_name = self.get_argument('name', None)
@@ -626,6 +639,7 @@ class Dial_API_Service(Application):
             (r"/api/v0/dial/([0-9A-F]*?)/backlight", Device_Backlight_Handler, handlers_config),
             (r"/api/v0/dial/([0-9A-F]*?)/name", Dial_Set_Dial_Name, handlers_config),
             (r"/api/v0/dial/([0-9A-F]*?)/reload", Dial_Reload_Device_Info, handlers_config),
+            (r"/api/v0/dial/([0-9A-F]*?)/reset", Dial_Reset_Device, handlers_config),
             (r"/api/v0/dial/([0-9A-F]*?)/calibrate", Dial_Set_Calibration, handlers_config),
             (r"/api/v0/dial/([0-9A-F]*?)/easing/dial", Dial_Set_Easing_Dial, handlers_config),
             (r"/api/v0/dial/([0-9A-F]*?)/easing/backlight", Dial_Set_Easing_Backlight, handlers_config),

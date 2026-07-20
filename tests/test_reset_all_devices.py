@@ -59,3 +59,36 @@ def test_reset_all_devices_leaves_state_untouched_on_failure():
     assert dial['backlight_unresponsive'] is True
     assert dial['backlight_fail_count'] == 3
     assert dial['value_changed'] is False
+
+
+# -- per-dial software reset --------------------------------------------------
+
+def test_reset_device_rearms_only_the_target_dial():
+    handler = _handler_with_dials()
+    handler.dials['BBB'] = {
+        'uid': 'BBB', 'value': 10, 'value_changed': False,
+        'backlight_changed': False, 'backlight_fail_count': 2,
+        'backlight_retry_after': 42, 'backlight_unresponsive': True,
+        'image_changed': False,
+    }
+
+    assert handler.reset_device('AAA') is True
+
+    target = handler.dials['AAA']
+    assert target['value_changed'] is True
+    assert target['backlight_changed'] is True
+    assert target['image_changed'] is True
+    assert target['backlight_unresponsive'] is False
+    assert target['backlight_fail_count'] == 0
+    assert target['backlight_retry_after'] == 0
+
+    # The other dial must be left completely alone.
+    other = handler.dials['BBB']
+    assert other['backlight_unresponsive'] is True
+    assert other['backlight_fail_count'] == 2
+    assert other['value_changed'] is False
+
+
+def test_reset_device_unknown_dial_returns_false():
+    handler = _handler_with_dials()
+    assert handler.reset_device('DOESNOTEXIST') is False

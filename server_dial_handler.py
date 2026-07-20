@@ -241,17 +241,39 @@ class ServerDialHandler:
             logger.error("reset_all_devices: hub reported failure")
             return False
 
-        now = time()
         for dial in self.dials.values():
-            dial['value_changed'] = True
-            dial['backlight_changed'] = True
-            dial['image_changed'] = True
-            dial['backlight_fail_count'] = 0
-            dial['backlight_retry_after'] = 0
-            dial['backlight_unresponsive'] = False
-            dial['update_deadline'] = now
+            self._rearm_dial(dial)
         logger.info(f"Reset {len(self.dials)} device(s); re-armed pending updates.")
         return True
+
+    def reset_device(self, dial_uid):
+        """Software-reset a single dial.
+
+        The hub serial protocol has no per-dial hardware power-cycle (only a
+        bus-wide reset), so this clears the target dial's cached "already
+        delivered" / unresponsive backlight state and re-arms its value,
+        backlight and image so the periodic loop re-pushes them. This recovers
+        a single dial whose backlight got stuck in a latched/backoff state
+        without disturbing the rest of the bus.
+        """
+        if not self._dial_exists(dial_uid):
+            logger.error(f"reset_device: dial {dial_uid} does not exist.")
+            return False
+
+        logger.info(f"Software-resetting dial {dial_uid}")
+        self._rearm_dial(self.dials[dial_uid])
+        return True
+
+    def _rearm_dial(self, dial):
+        """Clear a dial's backlight backoff/unresponsive latch and mark its
+        value, backlight and image dirty so the periodic loop re-pushes them."""
+        dial['value_changed'] = True
+        dial['backlight_changed'] = True
+        dial['image_changed'] = True
+        dial['backlight_fail_count'] = 0
+        dial['backlight_retry_after'] = 0
+        dial['backlight_unresponsive'] = False
+        dial['update_deadline'] = time()
 
     def get_dial_info(self, dial_uid=None):
         if dial_uid is not None:
