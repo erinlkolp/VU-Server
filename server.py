@@ -500,17 +500,22 @@ class Admin_Keys_Update(BaseHandler):
         if dial_list is None and key is None:
             return self.send_response(status='fail', message='Key, Key name and Dial list are all empty. Aborting.', status_code=400)
 
-        # Update key
+        updated = False
+
+        # Update key name
         if name is not None:
             if not self.config.update_api_key(key_uid=key, key_name=name):
                 return self.send_response(status='fail', message='Failed to update key!')
+            updated = True
 
         # Update dial access
         if dial_list:
             dial_list = dial_list.split(';')
             if self.config.api_key_add_dial_access(key, dial_list):
-                return self.send_response(status='ok', message='Key updated!')
+                updated = True
 
+        if updated:
+            return self.send_response(status='ok', message='Key updated!')
         return self.send_response(status='fail', message='Failed to update key!')
 
 class Admin_Keys_Remove(BaseHandler):
@@ -587,9 +592,11 @@ class Dial_API_Service(Application):
         self.dial_driver = DialSerialDriver(self.serialPort)
         self.dial_handler = ServerDialHandler(self.dial_driver, self.config)
 
-        # If we don't see any dials, try looking/provisioning some
-        if len(self.dial_handler.dials) <= 1:
-            logger.info("No additional dials found. Searching the bus for new ones...")
+        # If we don't see any dials, try looking/provisioning some. Only do this
+        # when the bus is genuinely empty -- the old `<= 1` check re-ran the
+        # provisioning scan on every startup whenever a single dial was present.
+        if len(self.dial_handler.dials) == 0:
+            logger.info("No dials found. Searching the bus for new ones...")
             self.dial_handler.provision_dials(num_attempts=3)
 
         handlers_config = { "handler":self.dial_handler, "config":self.config }

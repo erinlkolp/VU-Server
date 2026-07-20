@@ -136,10 +136,13 @@ class DialSerialDriver(SerialHardware):
                 if int(elem, 16) == 1:
                     onlineDials.append(key)
 
+            # Rebuild the map from scratch so dials that dropped off the bus
+            # since the last scan don't linger as phantom entries.
+            rescanned = {}
             for dialIndex in onlineDials:
                 deviceUID = self.dial_get_uid(dialIndex)                # Read dial UID
                 # Friendly name will be added from config
-                self.dials[dialIndex] = {
+                rescanned[dialIndex] = {
                                             'index': str(dialIndex),
                                             'uid': deviceUID,
                                             'dial_name': 'Not set',
@@ -156,6 +159,7 @@ class DialSerialDriver(SerialHardware):
                                             'hw_version': '?',
                                             'protocol_version': '?',
                                         }
+            self.dials = rescanned
 
         dialList = []
         for key, val in self.dials.items():
