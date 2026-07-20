@@ -501,7 +501,7 @@ class DialSerialDriver(SerialHardware):
         return self._sendCommand(self.commands.COMM_CMD_DISPLAY_SHOW_IMG, self.data_type.COMM_DATA_SINGLE_VALUE, 1, int(device))
 
     def dial_set_backlight(self, device, red, green, blue, white):
-        logger.debug(f"@dial_set_backlight(device={device}, red={red}, green={green}, green={green}, blue={blue}, white={white})")
+        logger.debug(f"@dial_set_backlight(device={device}, red={red}, green={green}, blue={blue}, white={white})")
         device = self._verify_device(device)
         if device is None or device not in self.dials:
             logger.error(f"dial_set_backlight: unknown device {device!r}")

@@ -133,12 +133,20 @@ class ServerDialHandler:
         updated = 0
         for _, dial in self.dials.items():
             if dial['backlight_changed']:
-                self.dial_driver.dial_set_backlight(dial['index'],
+                sent = self.dial_driver.dial_set_backlight(dial['index'],
                                                     dial['backlight']['red'],
                                                     dial['backlight']['green'],
                                                     dial['backlight']['blue'],
                                                     dial['backlight']['white']
                                                     )
+                # Only mark the update as delivered if the driver confirmed the
+                # write. Clearing the flag on a failed send would leave the
+                # cached RGBW state out of sync with the hardware, and the
+                # "already at value" short-circuit in dial_set_backlight() would
+                # then block re-sending the same colour indefinitely.
+                if not sent:
+                    logger.error(f"Failed to update backlight for dial {dial['uid']}; will retry.")
+                    continue
                 dial['backlight_changed'] = False
                 dial['update_deadline'] = time() + self.communication_timeout
                 updated = updated+1
