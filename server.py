@@ -82,6 +82,15 @@ class BaseHandler(RequestHandler):
             return False
         return True
 
+    @staticmethod
+    def _arg_is_true(value):
+        # Query arguments come back as strings (or the supplied default), never
+        # as the bool singleton `True`, so a plain `value is True` check can
+        # never match a request like `?force=true`.
+        if isinstance(value, bool):
+            return value
+        return str(value).strip().lower() in ('1', 'true', 'yes', 'on')
+
     def get_file_crc(self, filepath):
         if not os.path.exists(filepath):
             logger.error(f"File {filepath} does not exist!")
@@ -157,7 +166,7 @@ class Device_Set_Image(BaseHandler):
     def post(self, dial_uid):
         get_force = self.get_argument('force', False)
 
-        force_img_update = bool(get_force is True)
+        force_img_update = self._arg_is_true(get_force)
 
         logger.debug(f"Request:SET_IMAGE - Device:{dial_uid}")
 

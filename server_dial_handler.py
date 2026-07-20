@@ -58,7 +58,7 @@ class ServerDialHandler:
                 value = trunc(int(float(value)))
         except Exception as e:
             logger.error(e)
-            logger.error("Failed to convert value `{value}`to int. Defaulting to 0")
+            logger.error(f"Failed to convert value `{value}` to int. Defaulting to 0")
             value = 0
 
         return value
