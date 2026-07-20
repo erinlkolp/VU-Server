@@ -12,9 +12,11 @@ import types
 
 import pytest
 
+import server_dial_handler
 from server import BaseHandler
 from dial_driver import DialSerialDriver
 from database import DialsDB
+from server_dial_handler import ServerDialHandler
 
 
 # -- #1: force flag argument parsing -----------------------------------------
@@ -98,3 +100,22 @@ def test_api_update_master_is_committed(tmp_path):
 
     assert row is not None
     assert row['key_uid'] == 'MASTERKEY123'
+
+
+# -- #6: provision_dials returns the refreshed dial list ----------------------
+
+def test_provision_dials_returns_dial_info(monkeypatch):
+    # The /dial/provision endpoint sends back whatever provision_dials()
+    # returns. Previously the method returned None, so the endpoint always
+    # responded with `data: null`.
+    handler = object.__new__(ServerDialHandler)
+    handler.dials = {'AAA': {'uid': 'AAA', 'value': 0}}
+    handler.dial_driver = types.SimpleNamespace(provision_dials=lambda: True)
+
+    # Keep the test fast and hardware-free.
+    monkeypatch.setattr(server_dial_handler, 'sleep', lambda _seconds: None)
+    monkeypatch.setattr(handler, '_reload_dials', lambda rescan=False: None)
+
+    result = handler.provision_dials(num_attempts=1)
+
+    assert result == {'AAA': {'uid': 'AAA', 'value': 0}}

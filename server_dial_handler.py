@@ -169,6 +169,7 @@ class ServerDialHandler:
             sleep(0.2)
         logger.debug("Retrieving list of dials")
         self._reload_dials(True)
+        return self.get_dial_info()
 
     def get_dial_info(self, dial_uid=None):
         if dial_uid is not None:

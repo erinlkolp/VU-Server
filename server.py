@@ -378,12 +378,18 @@ class Dial_Set_Easing_Dial(BaseHandler):
         if step is None and period is None:
             return self.send_response(status='fail', message="Please provide at least one of required parameters (`step` or `period`)", status_code=400)
 
+        try:
+            step = None if step is None else int(step)
+            period = None if period is None else int(period)
+        except (TypeError, ValueError):
+            return self.send_response(status='fail', message="`step` and `period` must be integers.", status_code=400)
+
         if self.handler.dial_set_easing_dial(dial_uid=gaugeUID, step=step, period=period):
             values_dict = {}
             if step is not None:
-                values_dict['easing_dial_step'] = int(step)
+                values_dict['easing_dial_step'] = step
             if period is not None:
-                values_dict['easing_dial_period'] = int(period)
+                values_dict['easing_dial_period'] = period
             self.config.update_dial_db_cell_with_dict(gaugeUID, values_dict)
             self.handler.dial_reload_info_from_database(gaugeUID)
             return self.send_response(status='ok')
@@ -402,12 +408,18 @@ class Dial_Set_Easing_Backlight(BaseHandler):
         if step is None and period is None:
             return self.send_response(status='fail', message="Please provide at least one of required parameters (`step` or `period`)", status_code=400)
 
+        try:
+            step = None if step is None else int(step)
+            period = None if period is None else int(period)
+        except (TypeError, ValueError):
+            return self.send_response(status='fail', message="`step` and `period` must be integers.", status_code=400)
+
         if self.handler.dial_set_easing_backlight(dial_uid=gaugeUID, step=step, period=period):
             values_dict = {}
             if step is not None:
-                values_dict['easing_backlight_step'] = int(step)
+                values_dict['easing_backlight_step'] = step
             if period is not None:
-                values_dict['easing_backlight_period'] = int(period)
+                values_dict['easing_backlight_period'] = period
             self.config.update_dial_db_cell_with_dict(gaugeUID, values_dict)
             self.handler.dial_reload_info_from_database(gaugeUID)
             return self.send_response(status='ok')
