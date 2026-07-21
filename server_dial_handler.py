@@ -226,6 +226,55 @@ class ServerDialHandler:
         self._reload_dials(True)
         return self.get_dial_info()
 
+    def reset_all_devices(self):
+        """Ask the hub to reset every dial on the bus.
+
+        A reset reboots each dial to its power-on defaults, so any cached
+        "already delivered" / unresponsive backlight state is now stale. On a
+        confirmed reset we re-arm each dial (value, backlight, image) and clear
+        the backoff/unresponsive latch so the periodic loop pushes the desired
+        state to the freshly-rebooted hardware. On failure we touch nothing --
+        the hardware never reset, so the cached state is still accurate.
+        """
+        logger.info("Resetting all devices on the bus")
+        if not self.dial_driver.reset_all_devices():
+            logger.error("reset_all_devices: hub reported failure")
+            return False
+
+        for dial in self.dials.values():
+            self._rearm_dial(dial)
+        logger.info(f"Reset {len(self.dials)} device(s); re-armed pending updates.")
+        return True
+
+    def reset_device(self, dial_uid):
+        """Software-reset a single dial.
+
+        The hub serial protocol has no per-dial hardware power-cycle (only a
+        bus-wide reset), so this clears the target dial's cached "already
+        delivered" / unresponsive backlight state and re-arms its value,
+        backlight and image so the periodic loop re-pushes them. This recovers
+        a single dial whose backlight got stuck in a latched/backoff state
+        without disturbing the rest of the bus.
+        """
+        if not self._dial_exists(dial_uid):
+            logger.error(f"reset_device: dial {dial_uid} does not exist.")
+            return False
+
+        logger.info(f"Software-resetting dial {dial_uid}")
+        self._rearm_dial(self.dials[dial_uid])
+        return True
+
+    def _rearm_dial(self, dial):
+        """Clear a dial's backlight backoff/unresponsive latch and mark its
+        value, backlight and image dirty so the periodic loop re-pushes them."""
+        dial['value_changed'] = True
+        dial['backlight_changed'] = True
+        dial['image_changed'] = True
+        dial['backlight_fail_count'] = 0
+        dial['backlight_retry_after'] = 0
+        dial['backlight_unresponsive'] = False
+        dial['update_deadline'] = time()
+
     def get_dial_info(self, dial_uid=None):
         if dial_uid is not None:
             return self.dials.get(dial_uid, None)
