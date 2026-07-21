@@ -220,7 +220,6 @@ class SerialHardware(object):
         @param read_timeout seconds to wait for the response; None uses read_until_response's default
         @return the result from the handle_serial_read sub payload
         """
-        lines = []
         try:
             self.lock.acquire()
             self.assert_open()
@@ -228,22 +227,26 @@ class SerialHardware(object):
             if not isinstance(payload, str) and not isinstance(payload, bytes) and not isinstance(payload, bytearray):
                 raise TypeError("Serial_transaction expects str/bytes/bytearray")
 
-            # Check if any messages were received
+            # Drain and DISCARD any stale bytes left in the RX buffer from a
+            # previous/aborted transaction. These must never be merged into this
+            # command's response -- a leftover `<...>` line would otherwise be
+            # parsed as though it were the reply to `payload`.
+            stale_lines = []
             while self.port.in_waiting:
-                lines.append(self.handle_serial_read())
+                stale_lines.append(self.handle_serial_read())
 
-            if lines:
-                logger.debug(f"serial_transaction: discarding {len(lines)} stale buffered line(s) before sending {payload!r}: {lines!r}")
+            if stale_lines:
+                logger.debug(f"serial_transaction: discarding {len(stale_lines)} stale buffered line(s) before sending {payload!r}: {stale_lines!r}")
 
             if not self.handle_serial_send(payload):
                 raise _serial.SerialException("Failed to send {}".format(payload))
 
-            if not ignore_response:
-                rx_lines = self.read_until_response() if read_timeout is None else self.read_until_response(timeout=read_timeout)
-                if not any(line.startswith('<') for line in rx_lines):
-                    logger.warning(f"serial_transaction: no valid response for {payload!r}; received {rx_lines!r}")
-                lines = rx_lines + lines
+            if ignore_response:
+                return []
 
-            return lines
+            rx_lines = self.read_until_response() if read_timeout is None else self.read_until_response(timeout=read_timeout)
+            if not any(line.startswith('<') for line in rx_lines):
+                logger.warning(f"serial_transaction: no valid response for {payload!r}; received {rx_lines!r}")
+            return rx_lines
         finally:
             self.lock.release()

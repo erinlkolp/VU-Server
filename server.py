@@ -5,6 +5,8 @@ import argparse
 import zlib
 import time
 import re
+import functools
+from concurrent.futures import ThreadPoolExecutor
 from mimetypes import guess_type
 from dials.base_logger import logger, set_logger_level
 from tornado.web import Application, RequestHandler, Finish, StaticFileHandler
@@ -32,10 +34,21 @@ def pid_lock(service_name, create=True):
             os.remove(pid_file)
 
 class BaseHandler(RequestHandler):
-    def initialize(self, handler, config):
+    def initialize(self, handler, config, executor=None):
         self.handler = handler # pylint: disable=attribute-defined-outside-init
         self.config = config # pylint: disable=attribute-defined-outside-init
+        # Dedicated single-worker executor for blocking serial I/O. Handlers
+        # await work on it so the Tornado IOLoop never blocks on the serial bus.
+        # None (e.g. in unit tests) falls back to the default thread pool, which
+        # is fine for correctness -- only production needs the serialization
+        # guarantee of a single worker.
+        self.executor = executor # pylint: disable=attribute-defined-outside-init
         self.upload_path = os.path.join(os.path.dirname(__file__), 'upload') # pylint: disable=attribute-defined-outside-init
+
+    async def run_blocking(self, func, *args, **kwargs):
+        # Run a blocking (serial) call off the IOLoop thread and await its result.
+        loop = IOLoop.current()
+        return await loop.run_in_executor(self.executor, functools.partial(func, *args, **kwargs))
 
     def set_default_headers(self):
         self.set_header("Access-Control-Allow-Origin", "*")
@@ -149,7 +162,7 @@ class Device_Set_Handler(BaseHandler):
         return self.send_response(status='fail', message='Invalid dial_uid or device is offline.')
 
 class Device_SetRaw_Handler(BaseHandler):
-    def get(self, dial_uid):
+    async def get(self, dial_uid):
         value = self.get_argument('value', 0)
         logger.debug(f"Request:SET_RAW - Device:{dial_uid} To:{value}")
 
@@ -157,7 +170,7 @@ class Device_SetRaw_Handler(BaseHandler):
         if not self.require_dial_access(dial_uid):
             return
 
-        if self.handler.dial_set_raw(dial_uid=dial_uid, value=value):
+        if await self.run_blocking(self.handler.dial_set_raw, dial_uid=dial_uid, value=value):
             return self.send_response(status='ok', message='Dial RAW value updated', status_code=201)
         return self.send_response(status='fail', message='Invalid dial_uid or device is offline.', status_code=503)
 
@@ -313,7 +326,7 @@ class Dial_Get_List(BaseHandler):
 
 
 class Dial_Provision(BaseHandler):
-    def get(self):
+    async def get(self):
 
         logger.debug("Request: PROVISION_NEW_DIALS")
 
@@ -321,13 +334,13 @@ class Dial_Provision(BaseHandler):
         if not self.valid_admin_key():
             return False
 
-        dials = self.handler.provision_dials()
+        dials = await self.run_blocking(self.handler.provision_dials)
         logger.debug(dials)
 
         return self.send_response(status='ok', data=dials)
 
 class Dial_Reset_All(BaseHandler):
-    def get(self):
+    async def get(self):
 
         logger.debug("Request: RESET_ALL_DEVICES")
 
@@ -335,7 +348,7 @@ class Dial_Reset_All(BaseHandler):
         if not self.valid_admin_key():
             return False
 
-        if self.handler.reset_all_devices():
+        if await self.run_blocking(self.handler.reset_all_devices):
             return self.send_response(status='ok', message='All devices reset.', status_code=200)
         return self.send_response(status='fail', message='Failed to reset devices.', status_code=503)
 
@@ -382,7 +395,7 @@ class Dial_Set_Dial_Name(BaseHandler):
         return self.send_response(status='fail', message='Device not present!', status_code=406)
 
 class Dial_Reload_Device_Info(BaseHandler):
-    def get(self, gaugeUID):
+    async def get(self, gaugeUID):
 
         logger.debug(f"Request:GET_INFO - Device:{gaugeUID}")
 
@@ -390,11 +403,11 @@ class Dial_Reload_Device_Info(BaseHandler):
         if not self.require_dial_access(gaugeUID):
             return
 
-        dial_info = self.handler.dial_reload_info_from_hardware(gaugeUID)
+        dial_info = await self.run_blocking(self.handler.dial_reload_info_from_hardware, gaugeUID)
         return self.send_response(status='ok', data=dial_info)
 
 class Dial_Set_Calibration(BaseHandler):
-    def get(self, gaugeUID):
+    async def get(self, gaugeUID):
         dac_calibration = self.get_argument('value', None)
         logger.debug(f"Request:SET_CALIBRATION - Device:{gaugeUID} To: value={dac_calibration}")
 
@@ -403,12 +416,12 @@ class Dial_Set_Calibration(BaseHandler):
             return
 
         if dac_calibration is not None:
-            self.handler.dial_set_calibration(dial_uid=gaugeUID, value=dac_calibration, fullScale=False)
+            await self.run_blocking(self.handler.dial_set_calibration, dial_uid=gaugeUID, value=dac_calibration, fullScale=False)
             return self.send_response(status='ok', message="Calibration value updated", status_code=201)
         return self.send_response(status='fail', message="Device not present", status_code=406)
 
 class Dial_Set_Easing_Dial(BaseHandler):
-    def get(self, gaugeUID):
+    async def get(self, gaugeUID):
         step = self.get_argument('step', None)
         period = self.get_argument('period', None)
         logger.debug(f"Request:SET_EASING_DIAL - Device:{gaugeUID} Step:{step} Period:{period}")
@@ -426,7 +439,7 @@ class Dial_Set_Easing_Dial(BaseHandler):
         except (TypeError, ValueError):
             return self.send_response(status='fail', message="`step` and `period` must be integers.", status_code=400)
 
-        if self.handler.dial_set_easing_dial(dial_uid=gaugeUID, step=step, period=period):
+        if await self.run_blocking(self.handler.dial_set_easing_dial, dial_uid=gaugeUID, step=step, period=period):
             values_dict = {}
             if step is not None:
                 values_dict['easing_dial_step'] = step
@@ -438,7 +451,7 @@ class Dial_Set_Easing_Dial(BaseHandler):
         return self.send_response(status='fail', message="Device not present", status_code=406)
 
 class Dial_Set_Easing_Backlight(BaseHandler):
-    def get(self, gaugeUID):
+    async def get(self, gaugeUID):
         step = self.get_argument('step', None)
         period = self.get_argument('period', None)
         logger.debug(f"Request:SET_EASING_BACKLIGHT - Device:{gaugeUID} Step:{step} Period:{period}")
@@ -456,7 +469,7 @@ class Dial_Set_Easing_Backlight(BaseHandler):
         except (TypeError, ValueError):
             return self.send_response(status='fail', message="`step` and `period` must be integers.", status_code=400)
 
-        if self.handler.dial_set_easing_backlight(dial_uid=gaugeUID, step=step, period=period):
+        if await self.run_blocking(self.handler.dial_set_easing_backlight, dial_uid=gaugeUID, step=step, period=period):
             values_dict = {}
             if step is not None:
                 values_dict['easing_backlight_step'] = step
@@ -634,6 +647,13 @@ class Dial_API_Service(Application):
         self.dial_driver = DialSerialDriver(self.serialPort)
         self.dial_handler = ServerDialHandler(self.dial_driver, self.config)
 
+        # All blocking serial I/O (request handlers *and* the periodic updater)
+        # runs on this single dedicated worker thread. One worker keeps serial
+        # access serialized -- so the periodic loop and an offloaded handler
+        # never talk to the bus at once -- while keeping the Tornado IOLoop free
+        # to serve other requests instead of freezing on the serial port.
+        self.serial_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix='serial')
+
         # If we don't see any dials, try looking/provisioning some. Only do this
         # when the bus is genuinely empty -- the old `<= 1` check re-ran the
         # provisioning scan on every startup whenever a single dial was present.
@@ -641,7 +661,7 @@ class Dial_API_Service(Application):
             logger.info("No dials found. Searching the bus for new ones...")
             self.dial_handler.provision_dials(num_attempts=3)
 
-        handlers_config = { "handler":self.dial_handler, "config":self.config }
+        handlers_config = { "handler":self.dial_handler, "config":self.config, "executor":self.serial_executor }
         self.handlers = [
             (r"/api/v0/dial/provision", Dial_Provision, handlers_config),
             (r"/api/v0/dial/reset_all", Dial_Reset_All, handlers_config),
@@ -729,7 +749,14 @@ class Dial_API_Service(Application):
             logger.error("Check your 'config.yaml' or add it manually under 'server' section.")
             sys.exit(0)
 
-        pc = PeriodicCallback(self.dial_handler.periodic_dial_update, dial_update_period)
+        # Run the periodic dial update on the serial worker thread so its
+        # blocking serial writes (value/backlight/image, incl. chunked image
+        # sends with their inter-chunk sleeps) never freeze the IOLoop.
+        async def periodic_dial_update():
+            await IOLoop.current().run_in_executor(self.serial_executor,
+                                                   self.dial_handler.periodic_dial_update)
+
+        pc = PeriodicCallback(periodic_dial_update, dial_update_period)
         pc.start()
 
         IOLoop.instance().start()
