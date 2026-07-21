@@ -27,6 +27,9 @@ class FakeConfig:
     def is_valid_api_key(self, key):
         return key == 'testkey'
 
+    def api_key_has_access_to_dial(self, api_key, gaugeUID):
+        return True
+
     def update_dial_db_cell_with_dict(self, dial_uid, values_dict):
         self.updates.append((dial_uid, values_dict))
 
