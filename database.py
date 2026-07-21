@@ -1,6 +1,7 @@
 import os
 import sqlite3
 import random
+from threading import RLock
 from dials.base_logger import logger
 
 class DialsDB:
@@ -8,6 +9,12 @@ class DialsDB:
     database_changes = 0
 
     def __init__(self, database_file='vudials.db', init_if_missing=False):
+        # Serial I/O is offloaded to a worker thread, and provision/reload
+        # persist dial info to the DB from that thread. Allow cross-thread use
+        # of the connection and serialize every access with a reentrant lock so
+        # concurrent statements from the IOLoop thread and the serial worker
+        # can't collide on the same connection.
+        self._lock = RLock()
         # database_path = os.path.join(os.path.expanduser('~'), 'KaranovicResearch', 'vudials')
         database_path = os.path.join(os.path.dirname(__file__))
 
@@ -20,7 +27,7 @@ class DialsDB:
         if not os.path.exists(self.database_file) and not init_if_missing:
             raise SystemError("Database file does not exist!")
 
-        self.connection = sqlite3.connect(self.database_file)
+        self.connection = sqlite3.connect(self.database_file, check_same_thread=False)
         self.connection.row_factory = sqlite3.Row
 
         if init_if_missing:
@@ -178,23 +185,27 @@ class DialsDB:
 
     # -- Internal
     def _insert_dict(self, table_name, dict_data):
-        cursor = self.connection.cursor()
-        attrib_names = ", ".join(dict_data.keys())
-        attrib_values = ", ".join("?" * len(dict_data.keys()))
-        sql = f"INSERT INTO {table_name} ({attrib_names}) VALUES ({attrib_values})"
-        cursor.execute(sql, list(dict_data.values()))
-        self._commit()
+        with self._lock:
+            cursor = self.connection.cursor()
+            attrib_names = ", ".join(dict_data.keys())
+            attrib_values = ", ".join("?" * len(dict_data.keys()))
+            sql = f"INSERT INTO {table_name} ({attrib_names}) VALUES ({attrib_values})"
+            cursor.execute(sql, list(dict_data.values()))
+            self._commit()
 
     def _commit(self):
-        self.connection.commit()
+        with self._lock:
+            self.connection.commit()
 
     def _insert(self, query, params=()):
-        self._query(query, params)
-        self.connection.commit()
+        with self._lock:
+            self._query(query, params)
+            self.connection.commit()
 
     def _query(self, query, params=()):
-        cursor = self.connection.cursor()
-        cursor.execute(query, params)
+        with self._lock:
+            cursor = self.connection.cursor()
+            cursor.execute(query, params)
 
     # `table`, `cell` and `where` are always internal column/table names, never
     # user-supplied, so it's safe to interpolate them; only `where_cmp` (the
@@ -205,21 +216,24 @@ class DialsDB:
         return self._fetch_one_query(query, (where_cmp,))
 
     def _fetch_one_query(self, query, params=()):
-        cursor = self.connection.cursor()
-        cursor.execute(query, params)
-        return cursor.fetchone()
+        with self._lock:
+            cursor = self.connection.cursor()
+            cursor.execute(query, params)
+            return cursor.fetchone()
 
     def _fetch_all(self, query, params=()):
-        cursor = self.connection.cursor()
-        cursor.execute(query, params)
-        return cursor.fetchall()
+        with self._lock:
+            cursor = self.connection.cursor()
+            cursor.execute(query, params)
+            return cursor.fetchall()
 
 
     def _more_than_one_changed(self):
-        if self.connection.total_changes > self.database_changes:
-            self.database_changes = self.connection.total_changes
-            return True
-        return False
+        with self._lock:
+            if self.connection.total_changes > self.database_changes:
+                self.database_changes = self.connection.total_changes
+                return True
+            return False
 
     def _init_database(self):
         # Create DIALS table
