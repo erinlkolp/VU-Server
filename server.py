@@ -69,6 +69,22 @@ class BaseHandler(RequestHandler):
             return False
         return True
 
+    def require_dial_access(self, dial_uid):
+        # Gate for every per-dial endpoint: the key must both exist *and* be
+        # granted access to this specific dial. Skipping the second check let a
+        # key scoped to one dial command/read any other dial by UID -- the
+        # `dial_access` grant was previously only honoured by the list endpoint.
+        # Sends the appropriate error response itself; returns False on denial.
+        if not self.is_valid_api_key():
+            self.send_response(status='fail', message='Unauthorized', status_code=401)
+            return False
+        if not self.api_key_has_access_to_dial(gaugeUID=dial_uid):
+            self.send_response(status='fail',
+                               message='API key does not have access to this dial.',
+                               status_code=403)
+            return False
+        return True
+
     def valid_admin_key(self):
         admin_key = self.get_argument('admin_key', None)
         if not admin_key:
@@ -110,9 +126,9 @@ class Device_Status_Handler(BaseHandler):
     def get(self, dial_uid):
         logger.debug(f"Request:STATUS - Device:{dial_uid}")
 
-        # Validate API key
-        if not self.is_valid_api_key():
-            return self.send_response(status='fail', message='Unauthorized', status_code=401)
+        # Validate API key and per-dial access
+        if not self.require_dial_access(dial_uid):
+            return
 
         dial = self.handler.get_dial_info(dial_uid=dial_uid)
         if dial is not None:
@@ -124,9 +140,9 @@ class Device_Set_Handler(BaseHandler):
         value = self.get_argument('value', 0)
         logger.debug(f"Request:SET - Device:{dial_uid} To:{value}")
 
-        # Validate API key
-        if not self.is_valid_api_key():
-            return self.send_response(status='fail', message='Unauthorized', status_code=401)
+        # Validate API key and per-dial access
+        if not self.require_dial_access(dial_uid):
+            return
 
         if self.handler.dial_set_percent(dial_uid=dial_uid, value=value):
             return self.send_response(status='ok', message='Update queued')
@@ -137,9 +153,9 @@ class Device_SetRaw_Handler(BaseHandler):
         value = self.get_argument('value', 0)
         logger.debug(f"Request:SET_RAW - Device:{dial_uid} To:{value}")
 
-        # Validate API key
-        if not self.is_valid_api_key():
-            return self.send_response(status='fail', message='Unauthorized', status_code=401)
+        # Validate API key and per-dial access
+        if not self.require_dial_access(dial_uid):
+            return
 
         if self.handler.dial_set_raw(dial_uid=dial_uid, value=value):
             return self.send_response(status='ok', message='Dial RAW value updated', status_code=201)
@@ -154,9 +170,9 @@ class Device_Backlight_Handler(BaseHandler):
 
         logger.debug(f"Request:BACKLIGHT - Device:{dial_uid} To: (red:{red} green:{green} blue:{blue} white:{white})")
 
-        # Validate API key
-        if not self.is_valid_api_key():
-            return self.send_response(status='fail', message='Unauthorized', status_code=401)
+        # Validate API key and per-dial access
+        if not self.require_dial_access(dial_uid):
+            return
 
         if self.handler.dial_set_backlight(dial_uid=dial_uid, red=red, green=green, blue=blue, white=white):
             return self.send_response(status='ok', message='Update queued', status_code=201)
@@ -170,9 +186,9 @@ class Device_Set_Image(BaseHandler):
 
         logger.debug(f"Request:SET_IMAGE - Device:{dial_uid}")
 
-        # Validate API key
-        if not self.is_valid_api_key():
-            return self.send_response(status='fail', message='Unauthorized', status_code=401)
+        # Validate API key and per-dial access
+        if not self.require_dial_access(dial_uid):
+            return
 
         # Store new image
         img_file = self.handle_image_upload(dial_uid)
@@ -230,9 +246,9 @@ class Dial_Get_Image(BaseHandler):
 
         logger.debug("Request: GET_IMAGE")
 
-        # Validate API key
-        if not self.is_valid_api_key():
-            return self.send_response(status='fail', message='Unauthorized', status_code=401)
+        # Validate API key and per-dial access
+        if not self.require_dial_access(gaugeUID):
+            return
 
         dial_image = os.path.join(os.path.dirname(__file__), 'upload', f'img_{gaugeUID}')
 
@@ -256,9 +272,9 @@ class Dial_Get_Image_CRC(BaseHandler):
     def get(self, gaugeUID):
         logger.debug("Request: GET_IMAGE_CRC")
 
-        # Validate API key
-        if not self.is_valid_api_key():
-            return self.send_response(status='fail', message='Unauthorized', status_code=401)
+        # Validate API key and per-dial access
+        if not self.require_dial_access(gaugeUID):
+            return
 
         img_file = os.path.join(os.path.dirname(__file__), 'upload', f'img_{gaugeUID}')
 
@@ -328,9 +344,9 @@ class Dial_Reset_Device(BaseHandler):
 
         logger.debug(f"Request: RESET_DEVICE - Device:{gaugeUID}")
 
-        # Validate API key
-        if not self.is_valid_api_key():
-            return self.send_response(status='fail', message='Unauthorized', status_code=401)
+        # Validate API key and per-dial access
+        if not self.require_dial_access(gaugeUID):
+            return
 
         if self.handler.reset_device(gaugeUID):
             return self.send_response(status='ok', message='Device reset.', status_code=200)
@@ -341,9 +357,9 @@ class Dial_Set_Dial_Name(BaseHandler):
         new_name = self.get_argument('name', None)
         logger.debug(f"Request:SET_NAME - Device:{gaugeUID} To: friendly name={new_name}")
 
-        # Validate API key
-        if not self.is_valid_api_key():
-            return self.send_response(status='fail', message='Unauthorized', status_code=401)
+        # Validate API key and per-dial access
+        if not self.require_dial_access(gaugeUID):
+            return
 
         if new_name is not None:
             # Dial name should be 3 or more characters
@@ -370,9 +386,9 @@ class Dial_Reload_Device_Info(BaseHandler):
 
         logger.debug(f"Request:GET_INFO - Device:{gaugeUID}")
 
-        # Validate API key
-        if not self.is_valid_api_key():
-            return self.send_response(status='fail', message='Unauthorized', status_code=401)
+        # Validate API key and per-dial access
+        if not self.require_dial_access(gaugeUID):
+            return
 
         dial_info = self.handler.dial_reload_info_from_hardware(gaugeUID)
         return self.send_response(status='ok', data=dial_info)
@@ -382,9 +398,9 @@ class Dial_Set_Calibration(BaseHandler):
         dac_calibration = self.get_argument('value', None)
         logger.debug(f"Request:SET_CALIBRATION - Device:{gaugeUID} To: value={dac_calibration}")
 
-        # Validate API key
-        if not self.is_valid_api_key():
-            return self.send_response(status='fail', message='Unauthorized', status_code=401)
+        # Validate API key and per-dial access
+        if not self.require_dial_access(gaugeUID):
+            return
 
         if dac_calibration is not None:
             self.handler.dial_set_calibration(dial_uid=gaugeUID, value=dac_calibration, fullScale=False)
@@ -397,9 +413,9 @@ class Dial_Set_Easing_Dial(BaseHandler):
         period = self.get_argument('period', None)
         logger.debug(f"Request:SET_EASING_DIAL - Device:{gaugeUID} Step:{step} Period:{period}")
 
-        # Validate API key
-        if not self.is_valid_api_key():
-            return self.send_response(status='fail', message='Unauthorized', status_code=401)
+        # Validate API key and per-dial access
+        if not self.require_dial_access(gaugeUID):
+            return
 
         if step is None and period is None:
             return self.send_response(status='fail', message="Please provide at least one of required parameters (`step` or `period`)", status_code=400)
@@ -427,9 +443,9 @@ class Dial_Set_Easing_Backlight(BaseHandler):
         period = self.get_argument('period', None)
         logger.debug(f"Request:SET_EASING_BACKLIGHT - Device:{gaugeUID} Step:{step} Period:{period}")
 
-        # Validate API key
-        if not self.is_valid_api_key():
-            return self.send_response(status='fail', message='Unauthorized', status_code=401)
+        # Validate API key and per-dial access
+        if not self.require_dial_access(gaugeUID):
+            return
 
         if step is None and period is None:
             return self.send_response(status='fail', message="Please provide at least one of required parameters (`step` or `period`)", status_code=400)
@@ -455,9 +471,9 @@ class Dial_Get_Easing_Config(BaseHandler):
     def get(self, gaugeUID):
         logger.debug(f"Request:GET_EASING_CONFIG - Device:{gaugeUID}")
 
-        # Validate API key
-        if not self.is_valid_api_key():
-            return self.send_response(status='fail', message='Unauthorized', status_code=401)
+        # Validate API key and per-dial access
+        if not self.require_dial_access(gaugeUID):
+            return
 
         # TODO: Implement in dial handler
         return self.send_response(status='ok', message="not supported yet")
