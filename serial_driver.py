@@ -1,4 +1,3 @@
-import re
 import time
 from threading import Lock
 import serial as _serial
@@ -104,42 +103,6 @@ class SerialHardware(object):
                 logger.debug("Using '{}' as GaugeHub COM port".format(port.device))
                 return port
         return None
-
-    def _read_until_re_match(self, status_re=None, timeout=2):
-        """
-        Read lines from serial until either a line containing status_re is found or timeout
-
-        @param status_re regex, the status message you're waiting for
-        @param timeout time to wait for respone
-        @return tuple with True|False success|failure and the all the lines receiverd up
-        to the line containing the status_re match. Never returns lines if no match is found
-        """
-        rx_lines = []
-
-        compiled_re = re.compile(status_re, flags=re.IGNORECASE)
-
-        timeout_timestmap = time.time() + timeout
-        while time.time() <= timeout_timestmap:
-            # Wait for new line
-            line = self.handle_serial_read()
-            if line:
-                if self.debug_uart:
-                    logger.debug(f"_read_until_re_match:{line}")
-                rx_lines.append(line)
-                if compiled_re.match(line):
-                    return True, rx_lines
-        return False, []
-
-    def wait_for_re_string(self, regexstr=r'', timeout=30, return_all=False):
-        status, lines = self._read_until_re_match(status_re=regexstr, timeout=timeout)
-        if status:
-            if return_all:
-                return lines
-            return True
-
-        if return_all:
-            return []
-        return False
 
     def read_until_response(self, timeout=5):
         rx_lines = []
