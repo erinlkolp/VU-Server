@@ -186,8 +186,7 @@ class SerialHardware(object):
         @param read_timeout seconds to wait for the response; None uses read_until_response's default
         @return the result from the handle_serial_read sub payload
         """
-        try:
-            self.lock.acquire()
+        with self.lock:
             self.assert_open()
 
             if not isinstance(payload, str) and not isinstance(payload, bytes) and not isinstance(payload, bytearray):
@@ -222,5 +221,3 @@ class SerialHardware(object):
             if not any(line.startswith('<') for line in rx_lines):
                 logger.warning(f"serial_transaction: no valid response for {payload!r}; received {rx_lines!r}")
             return rx_lines
-        finally:
-            self.lock.release()
