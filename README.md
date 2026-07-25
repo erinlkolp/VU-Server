@@ -1,8 +1,10 @@
 # VU Dials - VU Server
 
+> **Upstream is unmaintained.** The original [SasaKaranovic/VU-Server](https://github.com/SasaKaranovic/VU-Server) has received no commits since May 2024. This fork is the actively maintained continuation — see [Relationship to upstream](#relationship-to-upstream).
+
 ![VU1 Dial](assets/vu1_hello_world.png?raw=true "VU1 Dial")
 
-VU Server is the official server application for [VU1 dials](https://vudials.com). It talks to the VU1 hardware hub over serial/USB and exposes a simple HTTP API, so any third-party application, script, or service can control the dials without needing to know anything about the underlying hardware protocol.
+VU Server is the server application for [VU1 dials](https://vudials.com). It talks to the VU1 hardware hub over serial/USB and exposes a simple HTTP API, so any third-party application, script, or service can control the dials without needing to know anything about the underlying hardware protocol.
 
 For example, updating a dial is a single HTTP request:
 
@@ -14,12 +16,12 @@ See the full [API documentation](https://docs.vudials.com/api_messaging/) for ev
 
 ## Quick start
 
-**Windows** users can grab the installer from [vudials.com/download/server](https://vudials.com/download/server).
+**Windows** users can grab `VUServer.zip` from this fork's [latest release](https://github.com/erinlkolp/VU-Server/releases/latest). Note that the download on vudials.com is built from upstream and does not include any of the [fixes listed below](#relationship-to-upstream).
 
 **Linux / macOS** users run from source:
 
 ```bash
-git clone https://github.com/SasaKaranovic/VU-Server.git
+git clone https://github.com/erinlkolp/VU-Server.git
 cd VU-Server
 pip3 install -r requirements.txt
 python3 server.py
@@ -72,9 +74,28 @@ The [VU1 demo application](https://github.com/SasaKaranovic/VU-Demo-App) ([downl
 
 See [community_applications.md](community_applications.md) for other scripts and integrations built by the community.
 
+## Relationship to upstream
+
+VU Server was originally written by [Sasa Karanovic](https://github.com/SasaKaranovic) as the official server for VU1 dials. Full credit for the original design and hardware protocol work goes to him.
+
+Upstream development stopped in May 2024. This fork picks it up from that last commit and has since added 60+ commits, including:
+
+- **Security fixes** — SQL injection in `database.py` (every query is now parameterized), and API-key enforcement on device-status and image endpoints that previously served data unauthenticated.
+- **Stability fixes** — server hangs on shutdown, crashes on partial easing/backlight requests, phantom offline dials, false timeouts on dial writes, and a batch of serial-protocol bugs (response bleed-through, blocking I/O on the event loop, stale-buffer spin).
+- **Maintenance** — Python 3.12–3.14 support, pinned dependencies, Dependabot, and CI that actually runs the test suite and PyLint on every push.
+- **New features** — per-dial and bus-wide software reset, exposed via both the API and the web UI.
+
+Run `git log 62a4059..HEAD` for the complete list.
+
+**Where to file things:** open issues and pull requests against [this repository](https://github.com/erinlkolp/VU-Server/issues). Issues filed upstream are unlikely to get a response.
+
+**On licensing:** upstream never published a license file, so this fork inherits that ambiguity. Treat the code as all-rights-reserved by the original author unless and until that changes.
+
 ## Contributing
 
 If you build (or want to build) an integration, extension, or plugin that talks to VU dials, start with the [VU Dials API documentation](https://docs.vudials.com/api_messaging/). Non-developers can help by asking maintainers of their favorite apps to add VU dials support.
+
+Contributions to the server itself are welcome — see [Relationship to upstream](#relationship-to-upstream) for where to file them.
 
 ---
 
