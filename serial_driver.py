@@ -154,10 +154,9 @@ class SerialHardware(object):
                 rx_lines.append(line)
                 if line.startswith('<'):
                     break
-            if time.time() > timeout_timestmap:
-                logger.error(f"Timeout occured ({time.time()} > {timeout_timestmap}); lines received before timeout: {rx_lines!r}")
-                break
-
+        # A timeout with no valid '<' reply is reported once by the caller
+        # (serial_transaction), so there's no separate timeout log here -- the
+        # old inline check duplicated the loop guard and fired only sporadically.
         return rx_lines
 
     def handle_serial_send(self, command):
@@ -173,7 +172,9 @@ class SerialHardware(object):
         command = self.serialPrefix + command + self.serialSuffix
 
         if self.flush_on_write and self.port.in_waiting > 0:
-            logger.error("Warning: In bytes waiting. Discarded. Port: \"{}\" description \"{}\"".format(self.port_info.name, self.description()))
+            # Routine pre-write hygiene: serial_transaction already drains the RX
+            # buffer, so leftover bytes here are expected, not an error condition.
+            logger.debug("Discarding {} pre-write byte(s) on port \"{}\" ({})".format(self.port.in_waiting, self.port_info.name, self.description()))
 
         if self.flush_on_write:
             self.port.reset_input_buffer()

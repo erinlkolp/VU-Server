@@ -7,9 +7,11 @@ read produced no `<`-prefixed reply, a leftover `<...>` line then got parsed as
 *this* command's response -- a wrong, misattributed hardware reply.
 """
 from threading import Lock
+from unittest.mock import MagicMock
 
 import serial as _serial
 
+import serial_driver
 from serial_driver import SerialHardware
 
 
@@ -141,3 +143,80 @@ def test_stale_drain_does_not_spin_on_partial_line():
     assert result == ['<01000000AA']
     # Broke out of the drain immediately instead of re-reading the partial line.
     assert s.port.readline_calls <= 2
+
+
+# --- B3: benign pre-write bytes must not be logged at ERROR level -------------
+class _WritablePort:
+    """Port stand-in for handle_serial_send: reports pending bytes and accepts writes."""
+    is_open = True
+
+    def __init__(self, pending=0):
+        self._pending = pending
+        self.written = []
+        self.reset_calls = 0
+
+    @property
+    def in_waiting(self):
+        return self._pending
+
+    def reset_input_buffer(self):
+        self.reset_calls += 1
+        self._pending = 0
+
+    def write(self, data):
+        self.written.append(data)
+        return len(data)
+
+
+def _send_serial(port, flush_on_write=True):
+    """A SerialHardware wired to a writable fake port for exercising handle_serial_send."""
+    s = object.__new__(SerialHardware)
+    s.flush_on_write = flush_on_write
+    s.serialPrefix = ''
+    s.serialSuffix = '\r\n'
+    s.debug_uart = False
+    s.port_info = _FakePortInfo()
+    s.port = port
+    return s
+
+
+def test_handle_serial_send_does_not_error_on_expected_pending_bytes(monkeypatch):
+    # serial_transaction already drained the RX buffer before calling send, so a
+    # pre-write flush is routine hygiene -- it must not be logged at ERROR level.
+    fake_logger = MagicMock()
+    monkeypatch.setattr(serial_driver, "logger", fake_logger)
+    port = _WritablePort(pending=2)
+    s = _send_serial(port)
+
+    assert s.handle_serial_send('>0100') is True
+    assert fake_logger.error.call_count == 0
+    assert port.written == [b'>0100\r\n']
+
+
+# --- B2: read_until_response logs no spurious ERROR during normal operation ----
+def test_read_until_response_logs_no_error_on_successful_read(monkeypatch):
+    fake_logger = MagicMock()
+    monkeypatch.setattr(serial_driver, "logger", fake_logger)
+    s = _bare_serial(buffered_lines=[])
+    replies = iter(['<01000000AA'])
+    s.handle_serial_read = lambda: next(replies, '')
+
+    result = s.read_until_response(timeout=1)
+
+    assert result == ['<01000000AA']
+    assert fake_logger.error.call_count == 0
+
+
+# --- B6: the lock is always released, even when the send fails -----------------
+def test_serial_transaction_releases_lock_when_send_fails():
+    s = _bare_serial(buffered_lines=[])
+    s.handle_serial_send = lambda payload: False  # send failure -> raises inside
+
+    try:
+        s.serial_transaction('>0100')
+    except _serial.SerialException:
+        pass
+
+    # If the lock leaked, this second acquire would block forever.
+    assert s.lock.acquire(timeout=1) is True
+    s.lock.release()
