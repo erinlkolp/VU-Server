@@ -201,11 +201,13 @@ class SerialHardware(object):
                 logger.error(e)
                 ret = ""
             return ret
-        except _serial.SerialTimeoutException:
-            logger.error("Warning: reading response timed out. port: \"{}\" description \"{}\"".format(self.port_info.name, self.description()))
+        except _serial.SerialException as e:
+            # readline() never raises SerialTimeoutException (that is write-only);
+            # a read timeout just returns empty/partial bytes. The exception that
+            # actually surfaces here is a SerialException when the device drops
+            # mid-read. Swallow it so a disconnect can't kill the serial thread.
+            logger.error("Warning: serial read failed. port: \"{}\" description \"{}\": {}".format(self.port_info.name, self.description(), e))
             return None
-
-        return None
 
     def serial_transaction(self, payload, ignore_response=False, read_timeout=None):
         """
@@ -233,7 +235,15 @@ class SerialHardware(object):
             # parsed as though it were the reply to `payload`.
             stale_lines = []
             while self.port.in_waiting:
-                stale_lines.append(self.handle_serial_read())
+                line = self.handle_serial_read()
+                if not line:
+                    # A partial line (bytes with no terminator yet) or a failed
+                    # read leaves in_waiting > 0 while readline() keeps returning
+                    # empty -- the old loop spun here forever, holding the lock.
+                    # Discard whatever raw bytes remain and stop draining.
+                    self.port.reset_input_buffer()
+                    break
+                stale_lines.append(line)
 
             if stale_lines:
                 logger.debug(f"serial_transaction: discarding {len(stale_lines)} stale buffered line(s) before sending {payload!r}: {stale_lines!r}")

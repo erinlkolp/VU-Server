@@ -8,7 +8,15 @@ read produced no `<`-prefixed reply, a leftover `<...>` line then got parsed as
 """
 from threading import Lock
 
+import serial as _serial
+
 from serial_driver import SerialHardware
+
+
+class _FakePortInfo:
+    """Stand-in for pyserial's ListPortInfo, for error-message formatting."""
+    name = "FAKE0"
+    description = "fake serial port"
 
 
 class _FakePort:
@@ -32,6 +40,7 @@ def _bare_serial(buffered_lines):
     s.lock = Lock()
     s.flush_on_write = False
     s.debug_uart = False
+    s.port_info = _FakePortInfo()
     s.port = _FakePort(buffered_lines)
     # Sending always "succeeds"; response content is supplied per-test.
     s.handle_serial_send = lambda payload: True
@@ -66,3 +75,69 @@ def test_ignore_response_does_not_return_stale_lines():
     result = s.serial_transaction('>0100', ignore_response=True)
 
     assert result == []
+
+
+# --- B1: handle_serial_read must survive a mid-read hardware failure ----------
+class _DisconnectPort:
+    """A port that raises SerialException from readline(), like an unplug mid-read."""
+    is_open = True
+
+    @property
+    def in_waiting(self):
+        return 0
+
+    def readline(self):
+        raise _serial.SerialException("device disconnected")
+
+
+def test_handle_serial_read_survives_device_disconnect():
+    # readline() raises SerialException when the device drops mid-read (NOT the
+    # write-only SerialTimeoutException the old code guarded against). It must be
+    # caught and reported as "no line", never propagated out of the read loop
+    # where it would kill the serial executor thread.
+    s = _bare_serial(buffered_lines=[])
+    s.port = _DisconnectPort()
+
+    assert s.handle_serial_read() is None
+
+
+# --- B7: the stale-drain loop must not spin on a partial (unterminated) line ---
+class _PartialLinePort:
+    """Raw bytes are waiting but they never form a complete line.
+
+    Real pyserial behaviour: in_waiting reports buffered bytes, but readline()
+    times out returning b'' when no line terminator has arrived yet. The old
+    ``while self.port.in_waiting`` drain re-read forever because in_waiting
+    stayed positive while every read came back empty.
+    """
+    is_open = True
+
+    def __init__(self):
+        self.readline_calls = 0
+        self._cleared = False
+
+    @property
+    def in_waiting(self):
+        return 0 if self._cleared else 4  # 4 buffered bytes, no terminator
+
+    def readline(self):
+        self.readline_calls += 1
+        if self.readline_calls > 20:
+            raise AssertionError(
+                "stale-drain spun: readline called >20 times on a partial line")
+        return b''  # never a complete line
+
+    def reset_input_buffer(self):
+        self._cleared = True
+
+
+def test_stale_drain_does_not_spin_on_partial_line():
+    s = _bare_serial(buffered_lines=[])
+    s.port = _PartialLinePort()
+    s.read_until_response = lambda timeout=5: ['<01000000AA']
+
+    result = s.serial_transaction('>0100')
+
+    assert result == ['<01000000AA']
+    # Broke out of the drain immediately instead of re-reading the partial line.
+    assert s.port.readline_calls <= 2
